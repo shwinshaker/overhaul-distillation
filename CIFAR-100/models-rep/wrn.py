@@ -3,6 +3,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+"""
+Original Author: Wei Yang
+"""
+
+__all__ = ['wrn']
+
 
 class BasicBlock(nn.Module):
     def __init__(self, in_planes, out_planes, stride, dropRate=0.0):
@@ -31,6 +37,7 @@ class BasicBlock(nn.Module):
         out = self.conv2(out)
         return torch.add(x if self.equalInOut else self.convShortcut(x), out)
 
+
 class NetworkBlock(nn.Module):
     def __init__(self, nb_layers, in_planes, out_planes, block, stride, dropRate=0.0):
         super(NetworkBlock, self).__init__()
@@ -38,22 +45,24 @@ class NetworkBlock(nn.Module):
 
     def _make_layer(self, block, in_planes, out_planes, nb_layers, stride, dropRate):
         layers = []
-        for i in range(int(nb_layers)):
+        for i in range(nb_layers):
             layers.append(block(i == 0 and in_planes or out_planes, out_planes, i == 0 and stride or 1, dropRate))
         return nn.Sequential(*layers)
 
     def forward(self, x):
         return self.layer(x)
 
+
 class WideResNet(nn.Module):
     def __init__(self, depth, num_classes, widen_factor=1, dropRate=0.0):
         super(WideResNet, self).__init__()
         nChannels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor]
-        assert((depth - 4) % 6 == 0)
-        n = (depth - 4) / 6
+        assert (depth - 4) % 6 == 0, 'depth should be 6n+4'
+        n = (depth - 4) // 6
         block = BasicBlock
         # 1st conv before any network block
-        self.conv1 = nn.Conv2d(3, nChannels[0], kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(3, nChannels[0], kernel_size=3, stride=1,
+                               padding=1, bias=False)
         # 1st block
         self.block1 = NetworkBlock(n, nChannels[0], nChannels[1], block, 1, dropRate)
         # 2nd block
@@ -64,7 +73,7 @@ class WideResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(nChannels[3])
         self.relu = nn.ReLU(inplace=True)
         self.fc = nn.Linear(nChannels[3], num_classes)
-        self.nChannels = nChannels
+        self.nChannels = nChannels[3]
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -76,15 +85,13 @@ class WideResNet(nn.Module):
             elif isinstance(m, nn.Linear):
                 m.bias.data.zero_()
 
-    def forward(self, x):
-        out = self.conv1(x)
-        out = self.block1(out)
-        out = self.block2(out)
-        out = self.block3(out)
-        out = self.relu(self.bn1(out))
-        out = F.avg_pool2d(out, 8)
-        out = out.view(-1, self.nChannels[3])
-        return self.fc(out)
+    def get_feat_modules(self):
+        feat_m = nn.ModuleList([])
+        feat_m.append(self.conv1)
+        feat_m.append(self.block1)
+        feat_m.append(self.block2)
+        feat_m.append(self.block3)
+        return feat_m
 
     def get_bn_before_relu(self):
         bn1 = self.block2.layer[0].bn1
@@ -93,26 +100,28 @@ class WideResNet(nn.Module):
 
         return [bn1, bn2, bn3]
 
-    def get_channel_num(self):
-
-        return self.nChannels[1:]
-
-    def extract_feature(self, x, preReLU=False):
+    def forward(self, x, is_feat=False, preact=False):
         out = self.conv1(x)
-        feat1 = self.block1(out)
-        feat2 = self.block2(feat1)
-        feat3 = self.block3(feat2)
-        out = self.relu(self.bn1(feat3))
+        f0 = out
+        out = self.block1(out)
+        f1 = out
+        out = self.block2(out)
+        f2 = out
+        out = self.block3(out)
+        f3 = out
+        out = self.relu(self.bn1(out))
         out = F.avg_pool2d(out, 8)
-        out = out.view(-1, self.nChannels[3])
+        out = out.view(-1, self.nChannels)
+        f4 = out
         out = self.fc(out)
-
-        if preReLU:
-            feat1 = self.block2.layer[0].bn1(feat1)
-            feat2 = self.block3.layer[0].bn1(feat2)
-            feat3 = self.bn1(feat3)
-
-        return [feat1, feat2, feat3], out
+        if is_feat:
+            if preact:
+                f1 = self.block2.layer[0].bn1(f1)
+                f2 = self.block3.layer[0].bn1(f2)
+                f3 = self.bn1(f3)
+            return [f0, f1, f2, f3, f4], out
+        else:
+            return out
 
 
 def wrn(**kwargs):
@@ -141,3 +150,21 @@ def wrn_16_2(**kwargs):
 def wrn_16_1(**kwargs):
     model = WideResNet(depth=16, widen_factor=1, **kwargs)
     return model
+
+
+if __name__ == '__main__':
+    import torch
+
+    x = torch.randn(2, 3, 32, 32)
+    net = wrn_40_2(num_classes=100)
+    feats, logit = net(x, is_feat=True, preact=True)
+
+    for f in feats:
+        print(f.shape, f.min().item())
+    print(logit.shape)
+
+    for m in net.get_bn_before_relu():
+        if isinstance(m, nn.BatchNorm2d):
+            print('pass')
+        else:
+            print('warning')

@@ -11,21 +11,35 @@ import torchvision
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import argparse
+import json
 
 import distiller
 import load_settings
 
-parser = argparse.ArgumentParser(description='CIFAR-100 training')
-parser.add_argument('--data_path', type=str, default='../data')
-parser.add_argument('--paper_setting', default='a', type=str)
-parser.add_argument('--epochs', default=200, type=int, help='number of total epochs to run')
-parser.add_argument('--batch_size', default=128, type=int, help='mini-batch size (default: 256)')
-parser.add_argument('--lr', default=0.1, type=float, help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
-parser.add_argument('--weight_decay', default=5e-4, type=float, help='weight decay')
-args = parser.parse_args()
+from helper.logger import Logger
+from helper.util import get_lr, Dict2Obj
 
-gpu_num = 0
+# get config file
+parser = argparse.ArgumentParser('config file')
+parser.add_argument('--config_file', '-c', type=str, help='config file')
+config = parser.parse_args()
+print('Config file: ', config.config_file)
+
+# load config
+args = {}
+with open(config.config_file, 'rt') as f:
+    args.update(json.load(f))
+args = Dict2Obj(args)
+print('   Save folder: ', args.exp_path)
+print()
+
+# environment set
+print('==> Set Environment..')
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
+
+# data
+print('==> Load data..')
 use_cuda = torch.cuda.is_available()
 transform_train = transforms.Compose([
     transforms.Pad(4, padding_mode='reflect'),
@@ -42,13 +56,14 @@ transform_test = transforms.Compose([
                          np.array([63.0, 62.1, 66.7]) / 255.0),
 ])
 
-trainset = torchvision.datasets.CIFAR100(root=args.data_path, train=True, download=True, transform=transform_train)
+trainset = torchvision.datasets.CIFAR100(root=args.data_path, train=True, download=False, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-testset = torchvision.datasets.CIFAR100(root=args.data_path, train=False, download=True, transform=transform_test)
+testset = torchvision.datasets.CIFAR100(root=args.data_path, train=False, download=False, transform=transform_test)
 testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
 # Model
-t_net, s_net, args = load_settings.load_paper_settings(args)
+print('==> Load model..')
+t_net, s_net = load_settings.load_paper_settings(args, n_cls=100)
 
 # Module for distillation
 d_net = distiller.Distiller(t_net, s_net)
@@ -104,7 +119,7 @@ def train_with_distill(d_net, epoch):
     print('Train \t Time Taken: %.2f sec' % (time.time() - epoch_start_time))
     print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss / (b_idx + 1), 100. * correct / total, correct, total))
 
-    return train_loss / (b_idx + 1)
+    return train_loss / (b_idx + 1), 100. * correct / total
 
 def test(net):
     epoch_start_time = time.time()
@@ -126,22 +141,46 @@ def test(net):
 
     print('Test \t Time Taken: %.2f sec' % (time.time() - epoch_start_time))
     print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (test_loss / (b_idx + 1), 100. * correct / total, correct, total))
-    return test_loss / (b_idx + 1), correct / total
+    return test_loss / (b_idx + 1), 100. * correct / total
 
 
-print('Performance of teacher network')
+print('==> Evaluate teacher..')
+print('   Performance of teacher network')
 test(t_net)
+
+print('==> Training..')
+time_start = time.time()
+logger = Logger(os.path.join(args.exp_path, 'log.txt'), title='log')
+logger.set_names(['Epoch', 'lr', 'Time-elapse(Min)',
+                  'Train-Loss', 'Train-Acc',
+                  'Test-Loss', 'Test-Acc'])
 
 for epoch in range(args.epochs):
     if epoch is 0:
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
-    elif epoch is (args.epochs // 2):
+    elif epoch is 150: # (args.epochs // 2):
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr / 10, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
-    elif epoch is (args.epochs * 3 // 4):
+    elif epoch is 180 : # (args.epochs * 3 // 4):
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr / 100, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
+    elif epoch is 210 : # (args.epochs * 3 // 4):
+        optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
+                              lr=args.lr / 1000, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
 
-    train_loss = train_with_distill(d_net, epoch)
-    test_loss, accuracy = test(s_net)
+    train_loss, train_acc = train_with_distill(d_net, epoch)
+    test_loss, test_acc = test(s_net)
+
+    logs = [epoch+1, get_lr(optimizer), (time.time() - time_start)/60]
+    logs += [train_loss, train_acc, test_loss, test_acc]
+    logger.append(logs)
+
+logger.close()
+
+print('==> Save last model..')
+state_dict = dict(epoch=epoch+1, state_dict=s_net.state_dict(), test_acc=test_acc)
+name = os.path.join(args.exp_path, 'student_last.pth')
+os.makedirs(os.path.dirname(name), exist_ok=True)
+torch.save(state_dict, name)
+print('==> Done..')
