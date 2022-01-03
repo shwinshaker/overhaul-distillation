@@ -42,19 +42,30 @@ os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 print('==> Load data..')
 use_cuda = torch.cuda.is_available()
 transform_train = transforms.Compose([
-    transforms.Pad(4, padding_mode='reflect'),
+    transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
-    transforms.RandomCrop(32),
     transforms.ToTensor(),
-    transforms.Normalize(np.array([125.3, 123.0, 113.9]) / 255.0,
-                         np.array([63.0, 62.1, 66.7]) / 255.0)
+    transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
 ])
-
 transform_test = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize(np.array([125.3, 123.0, 113.9]) / 255.0,
-                         np.array([63.0, 62.1, 66.7]) / 255.0),
+    transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
 ])
+
+
+# transform_train = transforms.Compose([
+#     transforms.Pad(4, padding_mode='reflect'),
+#     transforms.RandomHorizontalFlip(),
+#     transforms.RandomCrop(32),
+#     transforms.ToTensor(),
+#     transforms.Normalize(np.array([125.3, 123.0, 113.9]) / 255.0,
+#                          np.array([63.0, 62.1, 66.7]) / 255.0)
+# ])
+# transform_test = transforms.Compose([
+#     transforms.ToTensor(),
+#     transforms.Normalize(np.array([125.3, 123.0, 113.9]) / 255.0,
+#                          np.array([63.0, 62.1, 66.7]) / 255.0),
+# ])
 
 trainset = torchvision.datasets.CIFAR100(root=args.data_path, train=True, download=False, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=4)
@@ -103,7 +114,7 @@ def train_with_distill(d_net, epoch):
         outputs, loss_distill = d_net(inputs)
         loss_CE = criterion_CE(outputs, targets)
 
-        loss = loss_CE + loss_distill.sum() / batch_size / 1000
+        loss = loss_CE + loss_distill.sum() / batch_size / args.beta
 
         loss.backward()
         optimizer.step()
@@ -156,16 +167,26 @@ logger.set_names(['Epoch', 'lr', 'Time-elapse(Min)',
                   'Test-Loss', 'Test-Acc'])
 
 for epoch in range(args.epochs):
+    # if epoch is 0:
+    #     optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
+    #                           lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
+    # elif epoch is (args.epochs // 2):
+    #     optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
+    #                           lr=args.lr / 10, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
+    # elif epoch is (args.epochs * 3 // 4):
+    #     optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
+    #                           lr=args.lr / 100, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
+
     if epoch is 0:
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
-    elif epoch is 150: # (args.epochs // 2):
+    elif epoch is 150: 
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr / 10, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
-    elif epoch is 180 : # (args.epochs * 3 // 4):
+    elif epoch is 180:
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr / 100, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
-    elif epoch is 210 : # (args.epochs * 3 // 4):
+    elif epoch is 210:
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr / 1000, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
 
