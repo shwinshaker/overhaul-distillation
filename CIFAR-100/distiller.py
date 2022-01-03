@@ -6,6 +6,13 @@ import scipy
 
 import math
 
+
+def kl_div(y_s, y_t, T=4):
+    p_s = F.log_softmax(y_s / T, dim=1)
+    p_t = F.softmax(y_t / T, dim=1)
+    loss = F.kl_div(p_s, p_t, size_average=False) * (T**2) / y_s.shape[0]
+    return loss
+
 def distillation_loss(source, target, margin):
     target = torch.max(target, margin)
     loss = torch.nn.functional.mse_loss(source, target, reduction="none")
@@ -41,7 +48,7 @@ def get_margin_from_BN(bn):
     return torch.FloatTensor(margin).to(std.device)
 
 class Distiller(nn.Module):
-    def __init__(self, t_net, s_net):
+    def __init__(self, t_net, s_net, kd_T=4):
         super(Distiller, self).__init__()
 
         t_channels = t_net.get_channel_num()
@@ -56,6 +63,7 @@ class Distiller(nn.Module):
 
         self.t_net = t_net
         self.s_net = s_net
+        self.kd_T = kd_T
 
     def forward(self, x):
 
@@ -63,10 +71,14 @@ class Distiller(nn.Module):
         s_feats, s_out = self.s_net.extract_feature(x, preReLU=True)
         feat_num = len(t_feats)
 
+        # kd loss
+        loss_kd = kl_div(s_out, t_out, T=self.kd_T)
+
+        # feature distillation loss
         loss_distill = 0
         for i in range(feat_num):
             s_feats[i] = self.Connectors[i](s_feats[i])
             loss_distill += distillation_loss(s_feats[i], t_feats[i].detach(), getattr(self, 'margin%d' % (i+1))) \
                             / 2 ** (feat_num - i - 1)
 
-        return s_out, loss_distill
+        return s_out, loss_kd, loss_distill

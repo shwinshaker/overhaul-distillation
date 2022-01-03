@@ -77,7 +77,7 @@ print('==> Load model..')
 t_net, s_net = load_settings.load_paper_settings(args, n_cls=100)
 
 # Module for distillation
-d_net = distiller.Distiller(t_net, s_net)
+d_net = distiller.Distiller(t_net, s_net, kd_T=args.kd_T)
 
 print('the number of teacher model parameters: {}'.format(sum([p.data.nelement() for p in t_net.parameters()])))
 print('the number of student model parameters: {}'.format(sum([p.data.nelement() for p in s_net.parameters()])))
@@ -92,7 +92,7 @@ if use_cuda:
 criterion_CE = nn.CrossEntropyLoss()
 
 # Training
-def train_with_distill(d_net, epoch):
+def train_with_distill(d_net, epoch, args):
     epoch_start_time = time.time()
     print('\nDistillation epoch: %d' % epoch)
 
@@ -111,10 +111,10 @@ def train_with_distill(d_net, epoch):
         optimizer.zero_grad()
 
         batch_size = inputs.shape[0]
-        outputs, loss_distill = d_net(inputs)
+        outputs, loss_kd, loss_distill = d_net(inputs)
         loss_CE = criterion_CE(outputs, targets)
 
-        loss = loss_CE + loss_distill.sum() / batch_size / args.beta
+        loss = loss_CE * args.gamma + loss_kd * args.alpha + loss_distill.sum() / batch_size / args.beta
 
         loss.backward()
         optimizer.step()
@@ -190,7 +190,7 @@ for epoch in range(args.epochs):
         optimizer = optim.SGD([{'params': s_net.parameters()}, {'params': d_net.Connectors.parameters()}],
                               lr=args.lr / 1000, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
 
-    train_loss, train_acc = train_with_distill(d_net, epoch)
+    train_loss, train_acc = train_with_distill(d_net, epoch, args)
     test_loss, test_acc = test(s_net)
 
     logs = [epoch+1, get_lr(optimizer), (time.time() - time_start)/60]

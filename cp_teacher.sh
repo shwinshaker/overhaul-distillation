@@ -1,13 +1,16 @@
 
 paths=(
 
+    # 'wrn_40_2_cifar100_lr_0.05_decay_0.0005_swarank_alpha=1_linear_swa=150_trial_0'
+    'resnet32x4_cifar100_lr_0.05_decay_0.0005_swarank_alpha=1_linear_swa=150_trial_0'
+
 )
 
 
 
-sub_dir='student_model'
+sub_dir='models'
 dir_src='../RepDistiller/save'
-dir_dest='save'
+dir_dest='experiments'
 
 for path in "${paths[@]}"; do
     echo
