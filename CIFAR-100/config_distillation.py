@@ -22,6 +22,7 @@ def parse_option():
     parser.add_argument('--epochs', default=240, type=int, help='number of total epochs to run')
     parser.add_argument('--batch_size', default=64, type=int, help='mini-batch size (default: 256)')
     parser.add_argument('--lr', default=0.05, type=float, help='initial learning rate')
+    parser.add_argument('--beta', default=1000, type=float, help='distill loss weight')
 
     parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
     parser.add_argument('--weight_decay', default=5e-4, type=float, help='weight decay')
@@ -30,7 +31,11 @@ def parse_option():
 
     print('==> Make path..')
     teacher_name = os.path.abspath(args.teacher_path).split('/')[-2]
-    exp_name = 'oh_student={}_teacher={}'.format(args.model_student, teacher_name)
+    exp_name = 'oh_student={}_teacher={}_same_transform_as_Distill'.format(args.model_student, teacher_name)
+    if args.beta != 1000:
+        exp_name += '_beta={}'.format(args.beta)
+    if args.lr != 0.05:
+        exp_name += '_lr={:g}'.format(args.lr)
     args.exp_path = './experiments/student_model/{}'.format(exp_name)
 
     # set different learning rate from these 4 models
