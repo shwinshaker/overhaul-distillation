@@ -8,7 +8,7 @@ def parse_option():
 
     parser = argparse.ArgumentParser(description='CIFAR-100 training')
     parser.add_argument('--data_path', type=str, default='./data')
-    parser.add_argument('--teacher_path', type=str, default='./experiments/models')
+    parser.add_argument('--teacher_path', type=str, default='./save/models')
     parser.add_argument('--model_student', type=str, default='resnet8',
                             choices=['resnet8', 'resnet14', 'resnet20', 'resnet32', 'resnet44', 'resnet56', 'resnet110',
                                     'resnet8x4', 'resnet32x4', 'wrn_16_1', 'wrn_16_2', 'wrn_40_1', 'wrn_40_2',
@@ -40,7 +40,7 @@ def parse_option():
     exp_name += '_beta={:g}'.format(args.beta)
     if args.lr != 0.05:
         exp_name += '_lr={:g}'.format(args.lr)
-    args.exp_path = './experiments/student_model/{}'.format(exp_name)
+    args.exp_path = './save/student_model/{}'.format(exp_name)
 
     # set different learning rate from these 4 models
     if args.model_student in ['MobileNetV2', 'ShuffleV1', 'ShuffleV2']:
