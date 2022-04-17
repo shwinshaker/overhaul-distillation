@@ -5,25 +5,25 @@ gpu=7
 
 teacher='wrn_40_2'
 # teacher='resnet32x4'
-student='wrn_16_2'
-# student='wrn_40_1'
+# student='wrn_16_2'
+student='wrn_40_1'
 # student='ShuffleV2' 
 # student='resnet8x4' 
-# method='cifar100_lr_0.05_decay_0.0005'
+method='cifar100_lr_0.05_decay_0.0005'
 # method='cifar100_lr_0.05_decay_0.0005_lip_alpha=1e-05'
 # method='cifar100_lr_0.05_decay_0.0005_omse_alpha=1_linear'
-method='cifar100_lr_0.05_decay_0.0005_lip_alpha=1e-05_omse_alpha=1_linear'
+# method='cifar100_lr_0.05_decay_0.0005_lip_alpha=1e-05_omse_alpha=1_linear'
 # method='cifar100_lr_0.05_decay_0.0005_swa=150'
 # method='cifar100_lr_0.05_decay_0.0005_crl_alpha=1_linear_swa=150'
 # method='cifar100_lr_0.05_decay_0.0005_curl_alpha=1_linear_swa=150'
 # method='cifar100_lr_0.05_decay_0.0005_swareg_alpha=1_linear'
 # method='cifar100_lr_0.05_decay_0.0005_swareg_alpha=1_linear_swa=150'
 # method='cifar100_lr_0.05_decay_0.0005_swarank_alpha=1_linear_swa=150'
-trial=0
+trial=1
 
 gamma=1
 alpha=1.0 # 1.0
-beta=5000
+beta=1000
 
 
 # -- Config --
